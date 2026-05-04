@@ -1,0 +1,267 @@
+{% extends 'layouts/base.html' %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-700">
+    
+    <!-- Dashboard Header -->
+    <div class="flex items-end justify-between px-2">
+        <div>
+            <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Dashboard Overview</h1>
+            <p class="text-slate-500 mt-1">Giám sát pipeline bán hàng thời gian thực qua SSE.</p>
+        </div>
+        <div class="text-right">
+            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cập nhật lúc</p>
+            <p id="last-updated" class="text-sm font-mono font-bold text-slate-700">{{ snapshot.generated_at }}</p>
+        </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Stat: MySQL -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between mb-4">
+                <div class="p-2 bg-orange-50 rounded-lg">
+                    <i data-lucide="database" class="w-5 h-5 text-orange-600"></i>
+                </div>
+                <span class="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full uppercase">Primary</span>
+            </div>
+            <h3 class="text-slate-500 text-xs font-bold uppercase tracking-wider">Tổng Bản Ghi (MySQL)</h3>
+            <div class="mt-2 flex items-baseline gap-2">
+                <span id="stat-mysql" class="text-3xl font-extrabold text-slate-900">{{ snapshot.mysql.count }}</span>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-1">Dữ liệu từ POS Legacy</p>
+        </div>
+
+        <!-- Stat: Postgres -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between mb-4">
+                <div class="p-2 bg-emerald-50 rounded-lg">
+                    <i data-lucide="check-circle" class="w-5 h-5 text-emerald-600"></i>
+                </div>
+                <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full uppercase">Synced</span>
+            </div>
+            <h3 class="text-slate-500 text-xs font-bold uppercase tracking-wider">Thành Công (Postgres)</h3>
+            <div class="mt-2 flex items-baseline gap-2">
+                <span id="stat-postgres" class="text-3xl font-extrabold text-slate-900">{{ snapshot.postgres.count }}</span>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-1">Đã đồng bộ đầu cuối</p>
+        </div>
+
+        <!-- Stat: Queue -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between mb-4">
+                <div class="p-2 bg-amber-50 rounded-lg">
+                    <i data-lucide="layers" class="w-5 h-5 text-amber-600"></i>
+                </div>
+                <div id="queue-indicator">
+                    <span class="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full uppercase">Active</span>
+                </div>
+            </div>
+            <h3 class="text-slate-500 text-xs font-bold uppercase tracking-wider">Đang Chờ (Queue)</h3>
+            <div class="mt-2 flex items-baseline gap-2">
+                <span id="stat-queue" class="text-3xl font-extrabold text-slate-900">{{ snapshot.queue.messages }}</span>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-1">RabbitMQ Stream</p>
+        </div>
+
+        <!-- Stat: DLQ -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between mb-4">
+                <div class="p-2 bg-rose-50 rounded-lg">
+                    <i data-lucide="alert-circle" class="w-5 h-5 text-rose-600"></i>
+                </div>
+                <span class="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full uppercase">DLQ</span>
+            </div>
+            <h3 class="text-slate-500 text-xs font-bold uppercase tracking-wider">Thất Bại (DLQ)</h3>
+            <div class="mt-2 flex items-baseline gap-2">
+                <span id="stat-dlq" class="text-3xl font-extrabold text-slate-900">0</span>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-1">Cần xử lý lại</p>
+        </div>
+    </div>
+
+    <!-- MAIN BODY: Controls + Table -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        
+        <!-- SIDEBAR (4 cols) -->
+        <div class="lg:col-span-4 lg:sticky lg:top-10 space-y-6">
+            
+            <!-- Quick Form Card -->
+            <div class="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm">
+                <div class="flex items-center gap-2 mb-6">
+                    <div class="p-2 bg-indigo-50 rounded-lg">
+                        <i data-lucide="zap" class="w-5 h-5 text-indigo-600"></i>
+                    </div>
+                    <h2 class="text-lg font-bold text-slate-900">Gửi Đơn Siêu Tốc</h2>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Số lượng đơn</label>
+                        <input type="number" id="bulk-count" value="1000" class="w-full h-11 px-4 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none font-medium">
+                    </div>
+                    <button onclick="runBulkInject()" class="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all active:scale-[0.98] flex items-center justify-center gap-2">
+                        <i data-lucide="play-circle" class="w-5 h-5"></i>
+                        Gửi Ngay
+                    </button>
+                </div>
+
+                <!-- Admin Actions Separator -->
+                <div class="mt-8 pt-8 border-t border-slate-100">
+                    <h3 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">Quản Trị Hệ Thống</h3>
+                    <div class="grid grid-cols-1 gap-2">
+                        <button onclick="handleOp('/api/ops/ingest-legacy')" class="flex items-center justify-center gap-3 px-4 py-3 rounded-xl border border-slate-100 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all group">
+                            <i data-lucide="file-text" class="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors"></i>
+                            Ingest Legacy CSV
+                        </button>
+                        <button onclick="handleOp('/api/ops/ingest-historical')" class="flex items-center justify-center gap-3 px-4 py-3 rounded-xl border border-slate-100 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all group">
+                            <i data-lucide="database" class="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors"></i>
+                            Ingest Historical SQL
+                        </button>
+                        <button onclick="if(confirm('Phanh hàng đợi?')) handleOp('/api/ops/purge-queue')" class="flex items-center justify-center gap-3 px-4 py-3 rounded-xl border border-amber-100 bg-amber-50/30 text-xs font-bold text-amber-600 hover:bg-amber-100/50 transition-all mt-4">
+                            <i data-lucide="scissors" class="w-4 h-4"></i>
+                            Purge Queue (Phanh Hàng Đợi)
+                        </button>
+                        <button onclick="confirmWipe()" class="flex items-center justify-center gap-3 px-4 py-3 rounded-xl border border-rose-100 bg-rose-50/30 text-xs font-bold text-rose-600 hover:bg-rose-100/50 transition-all">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            Wipe All Databases
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DATA TABLE (8 cols) -->
+        <div class="lg:col-span-8 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col overflow-hidden min-h-[600px]">
+            <div class="p-6 border-b border-slate-50 flex items-center justify-between bg-white sticky top-0 z-10">
+                <div class="flex items-center gap-2">
+                    <h2 class="text-lg font-bold text-slate-900">Bản Ghi Gần Đây</h2>
+                    <span class="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[10px] font-extrabold rounded-md uppercase tracking-tighter">Real-time</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <p class="text-[11px] font-bold text-slate-400">HIỂN THỊ 50 ĐƠN MỚI NHẤT</p>
+                    <div class="p-1.5 bg-slate-50 rounded-lg">
+                        <i data-lucide="list" class="w-4 h-4 text-slate-400"></i>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto max-h-[800px]">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-slate-50/50 sticky top-0 z-10">
+                        <tr class="border-b border-slate-100">
+                            <th class="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-24">ID</th>
+                            <th class="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-left">Khách hàng</th>
+                            <th class="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-left">Sản phẩm</th>
+                            <th class="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">SL</th>
+                            <th class="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Tổng cộng</th>
+                            <th class="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Thời gian</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-orders-body" class="divide-y divide-slate-50">
+                        {% for order in snapshot.sales %}
+                        <tr class="hover:bg-slate-50/50 transition-colors">
+                            <td class="px-6 py-4 text-xs font-mono text-slate-400">#{{ order.message_id[:8] if order.message_id else 'N/A' }}</td>
+                            <td class="px-6 py-4 text-sm font-bold text-slate-900">User {{ order.user_id }}</td>
+                            <td class="px-6 py-4">
+                                <span class="px-2 py-1 bg-slate-100 text-slate-600 text-[11px] font-bold rounded-lg leading-none">ID: {{ order.product_id }}</span>
+                            </td>
+                            <td class="px-6 py-4 text-sm font-medium text-slate-600 text-center">{{ order.quantity }}</td>
+                            <td class="px-6 py-4 text-sm font-black text-slate-900 text-right">{{ "{:,.0f}".format(order.total_price) if order.total_price else '0' }}đ</td>
+                            <td class="px-6 py-4 text-[11px] font-bold text-slate-400 text-right">{{ order.created_at }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div id="empty-state" class="hidden flex-col items-center justify-center py-32 text-slate-400">
+                    <i data-lucide="inbox" class="w-12 h-12 mb-4 opacity-10"></i>
+                    <p class="text-sm font-medium">Chưa có dữ liệu giao dịch mới</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // SSE Monitoring Logic
+    const evtSource = new EventSource("/api/stream/dashboard");
+    evtSource.onmessage = function(event) {
+        const snap = JSON.parse(event.data);
+        
+        // Update Stats
+        document.getElementById('stat-mysql').innerText = snap.mysql.count.toLocaleString();
+        document.getElementById('stat-postgres').innerText = snap.postgres.count.toLocaleString();
+        document.getElementById('stat-queue').innerText = snap.queue.messages.toLocaleString();
+        document.getElementById('last-updated').innerText = snap.generated_at;
+
+        // Update Table
+        const tbody = document.getElementById('recent-orders-body');
+        const empty = document.getElementById('empty-state');
+        
+        if (!snap.sales || snap.sales.length === 0) {
+            tbody.innerHTML = "";
+            empty.style.display = 'flex';
+        } else {
+            empty.style.display = 'none';
+            let html = "";
+            data.sales.forEach(order => {
+                const safeId = order.message_id ? order.message_id.substring(0,8) : 'N/A';
+                const safePrice = order.total_price ? Number(order.total_price).toLocaleString() : '0';
+                html += `
+                    <tr class="hover:bg-slate-50/50 transition-colors">
+                        <td class="px-6 py-4 text-xs font-mono text-slate-400">#${safeId}</td>
+                        <td class="px-6 py-4 text-sm font-bold text-slate-900">User ${order.user_id}</td>
+                        <td class="px-6 py-4">
+                            <span class="px-2 py-1 bg-slate-100 text-slate-600 text-[11px] font-bold rounded-lg leading-none">ID: ${order.product_id}</span>
+                        </td>
+                        <td class="px-6 py-4 text-sm font-medium text-slate-600 text-center">${order.quantity}</td>
+                        <td class="px-6 py-4 text-sm font-black text-slate-900 text-right">${safePrice}đ</td>
+                        <td class="px-6 py-4 text-[11px] font-bold text-slate-400 text-right">${order.created_at}</td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+            if (window.lucide) lucide.createIcons();
+        }
+    };
+
+
+    async function handleOp(url) {
+        try {
+            const r = await fetch(url, { method: 'POST' });
+            const res = await r.json();
+            showToast(res.message, res.status);
+        } catch (e) {
+            showToast("Lỗi kết nối server", "error");
+        }
+    }
+    
+    async function runBulkInject() {
+        const count = document.getElementById('bulk-count').value;
+        try {
+            const r = await fetch('/bulk-orders', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ count: parseInt(count) })
+            });
+            const res = await r.json();
+            showToast(res.message, res.status);
+        } catch (e) {
+            showToast("Lỗi kết nối dữ liệu", "error");
+        }
+    }
+
+    function confirmWipe() {
+        if (confirm("CẢNH BÁO: Hành động này sẽ xoá SẠCH toàn bộ dữ liệu. Bạn có chắc chắn?")) {
+            fetch('/api/ops/wipe-databases', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ confirm: 'WIPE' })
+            }).then(r => r.json()).then(res => {
+                showToast(res.message, res.status);
+                if(res.status === 'success') setTimeout(() => location.reload(), 1500);
+            });
+        }
+    }
+</script>
+{% endblock %}

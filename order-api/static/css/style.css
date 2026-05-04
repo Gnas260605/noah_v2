@@ -1,0 +1,121 @@
+/* Noah System - Premium SaaS Design System */
+
+:root {
+  --sb-w: 240px;
+  --indigo-primary: #6366f1;
+  --indigo-dark: #4f46e5;
+  --slate-950: #0f172a;
+  --transition-speed: 0.3s;
+}
+
+body.sidebar-collapsed {
+  --sb-w: 72px;
+}
+
+/* Base Layout */
+.sidebar {
+  width: var(--sb-w);
+}
+
+.main-content {
+  margin-left: var(--sb-w);
+}
+
+/* Animations */
+@keyframes pulse-emerald {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.2); box-shadow: 0 0 12px rgba(16, 185, 129, 0.4); }
+}
+
+.animate-pulse {
+  animation: pulse-emerald 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Sidebar State Transitions */
+.sidebar-logo-text, .nav-text, .nav-section-label, #profile-text, #profile-more {
+  transition: all var(--transition-speed);
+}
+
+body.sidebar-collapsed .sidebar-logo-text,
+body.sidebar-collapsed .nav-text,
+body.sidebar-collapsed .nav-section-label,
+body.sidebar-collapsed #profile-text,
+body.sidebar-collapsed #profile-more {
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  margin-left: 0;
+  display: none;
+}
+
+body.sidebar-collapsed #sidebar-logo-container {
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+
+body.sidebar-collapsed .nav-item {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Tooltip on Collapsed */
+body.sidebar-collapsed .nav-item:hover::after {
+  content: attr(title);
+  position: absolute;
+  left: calc(100% + 10px);
+  padding: 6px 12px;
+  background: #1e293b;
+  color: white;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  border: 1px border rgba(255, 255, 255, 0.1);
+  z-index: 100;
+}
+
+/* Active Link State */
+.nav-item.active {
+  background: rgba(99, 102, 241, 0.1) !important;
+  color: #818cf8 !important;
+  border-right: 3px solid #6366f1;
+}
+
+.nav-item.active i {
+  color: #818cf8;
+}
+
+/* Toasts */
+.toast-item {
+  animation: toast-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes toast-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes toast-out {
+  from { transform: scale(1); opacity: 1; }
+  to { transform: scale(0.9); opacity: 0; }
+}

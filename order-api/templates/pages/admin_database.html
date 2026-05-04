@@ -1,0 +1,135 @@
+{% extends 'layouts/base.html' %}
+
+{% block content %}
+<div class="space-y-8 animate-in fade-in duration-700">
+    
+    <!-- Header -->
+    <div class="flex items-end justify-between">
+        <div>
+            <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Database Explorer</h1>
+            <p class="text-slate-500 mt-1">Truy vấn trực tiếp dữ liệu từ các bảng trong hệ thống.</p>
+        </div>
+        <div class="flex gap-3">
+           <select id="table-selector" onchange="loadTable()" class="h-11 px-6 rounded-xl border border-slate-200 bg-white shadow-sm font-bold text-sm text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all"></select>
+           <button onclick="loadTable()" class="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">
+               <i data-lucide="search" class="w-5 h-5"></i>
+           </button>
+        </div>
+    </div>
+
+    <!-- Data Table Container -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
+        <div class="p-4 border-b border-slate-50 flex items-center justify-between">
+            <span id="table-info" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Loading...</span>
+            <div class="flex items-center gap-2" id="pagination-controls">
+                <!-- Pagination buttons will go here -->
+            </div>
+        </div>
+
+        <div class="overflow-auto max-h-[700px]">
+            <table class="w-full text-left border-collapse">
+                <thead id="data-thead" class="bg-slate-50/50 sticky top-0 z-10 border-b border-slate-100">
+                    <!-- Dynamic Headers -->
+                </thead>
+                <tbody id="data-tbody" class="divide-y divide-slate-50 text-sm">
+                    <!-- Dynamic Rows -->
+                </tbody>
+            </table>
+        </div>
+        
+        <div id="no-data" class="hidden flex flex-col items-center justify-center py-40 text-slate-300">
+            <i data-lucide="database-zap" class="w-16 h-16 mb-4 opacity-10"></i>
+            <p class="text-lg font-bold">Bảng này hiện chưa có dữ liệu</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentTable = 'orders';
+    let currentOffset = 0;
+    const limit = 100;
+
+    function init() {
+        fetch('/api/ops/database-tables')
+            .then(r => r.json())
+            .then(res => {
+                const selector = document.getElementById('table-selector');
+                res.data.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t;
+                    opt.innerText = t.charAt(0).toUpperCase() + t.slice(1);
+                    selector.appendChild(opt);
+                });
+                loadTable();
+            });
+    }
+
+    function loadTable(offset = 0) {
+        currentTable = document.getElementById('table-selector').value || 'orders';
+        currentOffset = offset;
+        
+        const tbody = document.getElementById('data-tbody');
+        const thead = document.getElementById('data-thead');
+        const info = document.getElementById('table-info');
+        const noData = document.getElementById('no-data');
+        const pagination = document.getElementById('pagination-controls');
+
+        info.innerText = `Querying table: ${currentTable}...`;
+
+        fetch(`/api/ops/database-explorer?table=${currentTable}&limit=${limit}&offset=${offset}`)
+            .then(r => r.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    const data = res.data;
+                    const meta = res.meta;
+
+                    // Build Headers
+                    let hHtml = '<tr>';
+                    data.columns.forEach(c => {
+                        hHtml += `<th class="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">${c}</th>`;
+                    });
+                    hHtml += '</tr>';
+                    thead.innerHTML = hHtml;
+
+                    // Build Rows
+                    if (data.rows.length === 0) {
+                        tbody.innerHTML = '';
+                        noData.classList.remove('hidden');
+                    } else {
+                        noData.classList.add('hidden');
+                        let bHtml = '';
+                        data.rows.forEach(row => {
+                            bHtml += '<tr class="hover:bg-slate-50 transition-colors">';
+                            data.columns.forEach(col => {
+                                let val = row[col];
+                                if (col.includes('price') || col.includes('salary')) val = Number(val).toLocaleString() + 'đ';
+                                bHtml += `<td class="px-6 py-3 font-medium text-slate-600">${val}</td>`;
+                            });
+                            bHtml += '</tr>';
+                        });
+                        tbody.innerHTML = bHtml;
+                    }
+
+                    // Metadata info
+                    info.innerText = `Bảng: ${currentTable.toUpperCase()} | Hiển thị: ${data.rows.length} / ${meta.total}`;
+                    
+                    // Simple Pagination
+                    let pHtml = '';
+                    if (meta.current_page > 1) {
+                        pHtml += `<button onclick="loadTable(${(meta.current_page - 2) * limit})" class="px-3 py-1 bg-white border border-slate-200 rounded-lg text-xs hover:bg-slate-50 transition-all font-bold text-slate-600">Trước</button>`;
+                    }
+                    if (meta.current_page < meta.total_pages) {
+                        pHtml += `<button onclick="loadTable(${meta.current_page * limit})" class="px-3 py-1 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-lg text-xs hover:bg-indigo-100 transition-all font-bold ml-1">Sau</button>`;
+                    }
+                    pagination.innerHTML = pHtml;
+                    
+                    lucide.createIcons();
+                } else {
+                    showToast(res.message, 'error');
+                }
+            });
+    }
+
+    init();
+</script>
+{% endblock %}
