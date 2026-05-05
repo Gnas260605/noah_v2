@@ -29,7 +29,7 @@ def get_postgres():
     )
 
 def init_postgres_schema():
-    """BẮT BUỘC: Tạo schema tự động cho PostgreSQL."""
+    """Tự động khởi tạo schema cho PostgreSQL nếu chưa tồn tại."""
     try:
         conn = connect_with_retry(get_postgres, "PostgreSQL")
         cur = conn.cursor()
@@ -44,9 +44,9 @@ def init_postgres_schema():
         """)
         conn.commit()
         cur.close(); conn.close()
-        logging.info("PostgreSQL schema initialized.")
+        logging.info("PostgreSQL schema đã được khởi tạo.")
     except Exception as e:
-        logging.error(f"Failed to init PG schema: {e}")
+        logging.error(f"Không thể khởi tạo PG schema: {e}")
         raise e
 
 import smtplib
@@ -54,9 +54,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 def send_notification(order):
-    """
-    Gửi thông báo qua Email HTML chuyên nghiệp.
-    """
+    """Gửi thông báo xác nhận đơn hàng qua Email HTML."""
     smtp_server = "smtp.gmail.com"
     smtp_port   = 587
     sender_email   = os.getenv("SMTP_EMAIL", "sang28097@gmail.com")
@@ -65,7 +63,6 @@ def send_notification(order):
 
     subject = f"🔔 NOAH System: Xác nhận đơn hàng #{order['order_id']}"
     
-    # HTML Template
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -141,16 +138,13 @@ def send_notification(order):
     </html>
     """
 
-    # Gửi log bắt buộc theo tiêu chí nghiệm thu
-    logging.info(f"Order #{order['order_id']} synced. Notification sent to user (Email).")
+    logging.info(f"Đơn hàng #{order['order_id']} đã đồng bộ. Đang gửi thông báo Email...")
 
     try:
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = receiver_email
         msg['Subject'] = subject
-        
-        # Attach HTML content
         msg.attach(MIMEText(html_content, 'html'))
 
         server = smtplib.SMTP(smtp_server, smtp_port)
@@ -158,16 +152,17 @@ def send_notification(order):
         server.login(sender_email, sender_password)
         server.send_message(msg)
         server.quit()
-        logging.info(f"HTML Email sent successfully to {receiver_email}")
+        logging.info(f"Đã gửi email HTML thành công tới {receiver_email}")
     except Exception as e:
-        logging.error(f"Failed to send Email: {e}")
+        logging.error(f"Gửi email thất bại: {e}")
 
 def callback(ch, method, properties, body):
+    """Hàm xử lý tin nhắn từ RabbitMQ."""
     try:
         order = json.loads(body)
-        logging.info(f"Processing order #{order['order_id']}...")
+        logging.info(f"Đang xử lý đơn hàng #{order['order_id']}...")
 
-        # 1. Ghi vào PostgreSQL (Finance)
+        # Bước 1: Ghi vào PostgreSQL (Hệ thống Tài chính)
         pg = connect_with_retry(get_postgres, "PostgreSQL")
         pg_cur = pg.cursor()
         pg_cur.execute(
@@ -177,7 +172,7 @@ def callback(ch, method, properties, body):
         pg.commit()
         pg_cur.close(); pg.close()
 
-        # 2. Cập nhật MySQL (Store): PENDING -> SYNCED
+        # Bước 2: Cập nhật trạng thái trong MySQL (Cửa hàng): PENDING -> SYNCED
         db  = connect_with_retry(get_mysql, "MySQL")
         cur = db.cursor()
         cur.execute(
@@ -187,22 +182,21 @@ def callback(ch, method, properties, body):
         db.commit()
         cur.close(); db.close()
 
-        # 3. Gửi thông báo (Asynchronous side effect)
+        # Bước 3: Kích hoạt gửi thông báo bất đồng bộ (Side effect)
         threading.Thread(target=send_notification, args=(order,), daemon=True).start()
 
         ch.basic_ack(delivery_tag=method.delivery_tag)
-        logging.info(f"Order #{order['order_id']} synced successfully.")
+        logging.info(f"Đơn hàng #{order['order_id']} đã được đồng bộ thành công.")
 
     except Exception as e:
-        logging.error(f"Failed to process order: {e}")
-        # NACK and requeue
+        logging.error(f"Lỗi khi xử lý đơn hàng: {e}")
+        # Trả lại hàng đợi nếu gặp lỗi xử lý
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
         time.sleep(5)
 
 def main():
     init_postgres_schema()
-    
-    logging.info("Worker starting, connecting to RabbitMQ...")
+    logging.info("Worker đang khởi động, kết nối tới RabbitMQ...")
     
     def get_rmq_channel():
         conn = pika.BlockingConnection(
@@ -216,7 +210,7 @@ def main():
     ch.basic_qos(prefetch_count=1)
     ch.basic_consume(queue='order_queue', on_message_callback=callback)
     
-    logging.info("Worker ready. Waiting for messages...")
+    logging.info("Worker sẵn sàng. Đang chờ đơn hàng mới...")
     ch.start_consuming()
 
 if __name__ == "__main__":

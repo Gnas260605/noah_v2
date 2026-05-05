@@ -9,7 +9,7 @@ PROCESSED_DIR = os.getenv("PROCESSED_DIR", "/app/processed")
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "5"))
 
 def get_db_connection():
-    """Retry pattern for MySQL connection."""
+    """Thiết lập kết nối tới MySQL với cơ chế thử lại."""
     retries = 10
     wait = 5
     for attempt in range(retries):
@@ -20,23 +20,25 @@ def get_db_connection():
                 user=os.getenv("MYSQL_USER", "root"),
                 password=os.getenv("MYSQL_PASSWORD", "root"),
             )
-            logging.info("Connected to MySQL.")
+            logging.info("Đã kết nối thành công tới MySQL.")
             return conn
         except Exception as e:
-            logging.warning(f"MySQL not ready ({e}), retry {attempt+1}/{retries}...")
+            logging.warning(f"MySQL chưa sẵn sàng ({e}), đang thử lại {attempt+1}/{retries}...")
             time.sleep(wait)
-    raise RuntimeError("Cannot connect to MySQL after retries.")
+    raise RuntimeError("Không thể kết nối tới MySQL sau nhiều lần thử.")
 
 def process_file(filepath: str, cursor, conn):
+    """Đọc file CSV và cập nhật tồn kho vào cơ sở dữ liệu."""
     processed = 0
     skipped   = 0
 
     try:
-        with open(filepath, newline='', encoding='utf-8-sig') as f: # Use utf-8-sig for BOM
+        # Sử dụng utf-8-sig để xử lý BOM nếu có
+        with open(filepath, newline='', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 try:
-                    # Clean keys and values
+                    # Làm sạch dữ liệu đầu vào
                     row = {k.strip(): v.strip() if v else "" for k, v in row.items()}
                     
                     raw_pid = row.get("product_id") or row.get("id")
@@ -49,8 +51,9 @@ def process_file(filepath: str, cursor, conn):
                     p_id = int(float(raw_pid))
                     qty  = int(float(raw_qty))
                     
+                    # Bỏ qua nếu số lượng âm (dữ liệu lỗi)
                     if qty < 0:
-                        logging.warning(f"Skipped negative stock: p_id={p_id}, qty={qty}")
+                        logging.warning(f"Bỏ qua dòng có tồn kho âm: p_id={p_id}, qty={qty}")
                         skipped += 1
                         continue
                     
@@ -60,30 +63,31 @@ def process_file(filepath: str, cursor, conn):
                     )
                     processed += 1
                 except Exception as e:
-                    logging.warning(f"Skipped invalid row {row}: {e}")
+                    logging.warning(f"Bỏ qua dòng không hợp lệ {row}: {e}")
                     skipped += 1
 
         conn.commit()
-        logging.info(f"File {os.path.basename(filepath)}: Processed {processed}, Skipped {skipped}")
+        logging.info(f"File {os.path.basename(filepath)}: Đã xử lý {processed}, Bỏ qua {skipped}")
     except Exception as e:
-        logging.error(f"Error reading file {filepath}: {e}")
+        logging.error(f"Lỗi khi đọc file {filepath}: {e}")
         raise e
 
 def move_to_processed(filepath: str):
+    """Di chuyển file đã xử lý vào thư mục lưu trữ kèm timestamp."""
     os.makedirs(PROCESSED_DIR, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename  = os.path.basename(filepath)
     dest      = os.path.join(PROCESSED_DIR, f"{timestamp}_{filename}")
     shutil.move(filepath, dest)
-    logging.info(f"Moved to {dest}")
+    logging.info(f"Đã di chuyển file tới: {dest}")
 
 def main():
     os.makedirs(INPUT_DIR, exist_ok=True)
     os.makedirs(PROCESSED_DIR, exist_ok=True)
 
-    conn   = get_db_connection()
+    conn = get_db_connection()
     
-    logging.info(f"Polling {INPUT_DIR} every {POLL_INTERVAL}s...")
+    logging.info(f"Đang quét thư mục {INPUT_DIR} mỗi {POLL_INTERVAL} giây...")
     while True:
         try:
             if not conn.is_connected():
@@ -93,13 +97,13 @@ def main():
             for fname in os.listdir(INPUT_DIR):
                 if fname.endswith(".csv"):
                     fpath = os.path.join(INPUT_DIR, fname)
-                    logging.info(f"Processing: {fname}")
+                    logging.info(f"Đang xử lý file: {fname}")
                     process_file(fpath, cursor, conn)
                     move_to_processed(fpath)
             
             cursor.close()
         except Exception as e:
-            logging.error(f"Loop error: {e}")
+            logging.error(f"Lỗi trong vòng lặp quét file: {e}")
             time.sleep(5)
             try: conn = get_db_connection()
             except: pass

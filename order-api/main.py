@@ -5,10 +5,11 @@ from pydantic import BaseModel, field_validator
 import mysql.connector
 import pika
 
+# Cấu hình log cơ bản
 logging.basicConfig(level=logging.INFO)
 app = FastAPI(title="NOAH Order API")
 
-# BẮT BUỘC: CORS middleware
+# Cấu hình CORS để cho phép Dashboard truy cập
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,17 +26,18 @@ class OrderRequest(BaseModel):
     @classmethod
     def quantity_must_be_positive(cls, v):
         if v <= 0:
-            raise ValueError('quantity must be > 0')
+            raise ValueError('Số lượng phải lớn hơn 0')
         return v
 
 def connect_with_retry(connect_fn, name, retries=10, wait=5):
+    """Thực hiện kết nối lại nếu gặp lỗi."""
     for i in range(retries):
         try:
             return connect_fn()
         except Exception as e:
-            logging.warning(f"Retry {i+1}/{retries} connecting to {name}: {e}")
+            logging.warning(f"Thử lại {i+1}/{retries} kết nối tới {name}: {e}")
             time.sleep(wait)
-    raise RuntimeError(f"Cannot connect to {name} after retries")
+    raise RuntimeError(f"Không thể kết nối tới {name} sau nhiều lần thử")
 
 def get_mysql():
     return mysql.connector.connect(
@@ -55,12 +57,12 @@ def get_rabbitmq():
 
 @app.post("/api/orders", status_code=202)
 def create_order(order: OrderRequest):
-    # 1. Lưu vào MySQL với trạng thái PENDING
+    # Bước 1: Lưu thông tin đơn hàng vào MySQL với trạng thái PENDING
     try:
         db = connect_with_retry(get_mysql, "MySQL")
         cur = db.cursor()
         
-        # Lấy giá sản phẩm
+        # Kiểm tra sự tồn tại của sản phẩm và lấy giá
         cur.execute("SELECT price FROM products WHERE id = %s", (order.product_id,))
         row = cur.fetchone()
         if not row:
@@ -79,10 +81,10 @@ def create_order(order: OrderRequest):
         cur.close(); db.close()
     except Exception as e:
         if isinstance(e, HTTPException): raise e
-        logging.error(f"MySQL error: {e}")
+        logging.error(f"Lỗi MySQL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-    # 2. Publish vào RabbitMQ
+    # Bước 2: Đẩy đơn hàng vào hàng đợi RabbitMQ để xử lý bất đồng bộ
     try:
         rmq_conn, ch = connect_with_retry(get_rabbitmq, "RabbitMQ")
         payload = {
@@ -100,8 +102,8 @@ def create_order(order: OrderRequest):
         )
         rmq_conn.close()
     except Exception as e:
-        logging.error(f"RabbitMQ error: {e}")
-        # Mark order as FAILED in MySQL if RabbitMQ fails
+        logging.error(f"Lỗi RabbitMQ: {e}")
+        # Đánh dấu đơn hàng thất bại nếu không thể đẩy vào hàng đợi
         db = connect_with_retry(get_mysql, "MySQL")
         cur = db.cursor()
         cur.execute("UPDATE orders SET status='FAILED' WHERE id = %s", (order_id,))
