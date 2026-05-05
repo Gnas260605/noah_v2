@@ -1,4 +1,4 @@
-import os, time, json, logging
+import os, time, json, logging, threading
 import pika, psycopg2, mysql.connector
 
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
@@ -115,8 +115,8 @@ def callback(ch, method, properties, body):
         db.commit()
         cur.close(); db.close()
 
-        # 3. Gửi thông báo
-        send_notification(order)
+        # 3. Gửi thông báo (Asynchronous side effect)
+        threading.Thread(target=send_notification, args=(order,), daemon=True).start()
 
         ch.basic_ack(delivery_tag=method.delivery_tag)
         logging.info(f"Order #{order['order_id']} synced successfully.")

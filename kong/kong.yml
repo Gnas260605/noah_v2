@@ -22,6 +22,9 @@ services:
         config:
           minute: 10
           policy: local
+      - name: key-auth
+        config:
+          key_names: [apikey]
 
   - name: report-service
     url: http://report-service:5002
@@ -29,6 +32,10 @@ services:
       - name: report-route
         paths: ["/report"]
         strip_path: true
+    plugins:
+      - name: key-auth
+        config:
+          key_names: [apikey]
 
 consumers:
   - username: dashboard-client

@@ -41,12 +41,32 @@ Hệ thống tích hợp dữ liệu từ kho Legacy (CSV) vào MySQL, xử lý 
 ### 2.1 Cấu trúc file `.env`
 Tạo file `.env` tại thư mục gốc (không đẩy file này lên Git):
 ```env
+# MySQL Configuration (Critical for Startup)
+MYSQL_ROOT_PASSWORD=root
+MYSQL_DATABASE=noah_store
+MYSQL_PASSWORD=root
+MYSQL_USER=root
+MYSQL_HOST=mysql
+
+# PostgreSQL Configuration
+POSTGRES_DB=noah_finance
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_HOST=postgres
+
+# RabbitMQ Configuration
+RABBITMQ_DEFAULT_USER=guest
+RABBITMQ_DEFAULT_PASS=guest
+RABBITMQ_HOST=rabbitmq
+
+# Dashboard & Kong Gateway
 VITE_API_BASE=http://localhost:8000
 VITE_API_KEY=noah-secret-key
-MYSQL_PASSWORD=root
-POSTGRES_PASSWORD=postgres
-# Option 1: Email Config
+
+# Notification System (Option 1)
+SMTP_EMAIL=your_email@gmail.com
 SMTP_PASSWORD=your_app_password
+SMTP_RECEIVER=your_email@gmail.com
 ```
 
 ### 2.2 Khởi chạy hệ thống
