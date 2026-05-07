@@ -10,51 +10,62 @@ export default function PlaceOrder() {
   const [loading, setLoading]   = useState(false)
   const [toast, setToast]       = useState(null)
 
+  const loadProducts = async () => {
+    try {
+      const r = await noahApi.getProducts();
+      setProducts(r.data);
+      // Nếu chưa chọn sản phẩm nào, tự động chọn sản phẩm đầu tiên
+      if (r.data.length > 0 && !form.product_id) {
+        setForm(f => ({ ...f, product_id: r.data[0].product_id }));
+      }
+    } catch (e) {
+      console.error("Lỗi tải sản phẩm:", e);
+    }
+  };
+
   useEffect(() => {
-    noahApi.getProducts()
-      .then(r => { 
-        setProducts(r.data); 
-        if (r.data.length > 0) {
-          setForm(f => ({ ...f, product_id: r.data[0].product_id }));
-        }
-      })
-      .catch(console.error)
-  }, [])
+    loadProducts();
+    // BEST PRACTICE: Polling định kỳ (mỗi 5s) để cập nhật tồn kho từ hệ thống khác/người dùng khác
+    const interval = setInterval(loadProducts, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const selectedProduct = products.find(p => p.product_id === Number(form.product_id))
   const estimatedTotal  = selectedProduct ? selectedProduct.price * form.quantity : 0
 
   const handleSubmit = async () => {
-    if (!form.product_id) return;
+    if (!form.product_id || !selectedProduct) return;
     
     const qty = Number(form.quantity);
-    if (qty <= 0) {
-      setToast({ type: "error", msg: "❌ Số lượng phải lớn hơn 0" });
-      return;
-    }
-
-    // KIỂM TRA TỒN KHO NGAY TẠI FRONTEND
-    if (selectedProduct && qty > selectedProduct.stock) {
-      setToast({ 
-        type: "error", 
-        msg: `❌ Không đủ hàng! Hiện chỉ còn ${selectedProduct.stock} sản phẩm trong kho.` 
-      });
-      return;
-    }
+    if (qty <= 0 || qty > selectedProduct.stock) return;
 
     setLoading(true)
     setToast(null)
+
+    // --- KỸ THUẬT: OPTIMISTIC UI (Cập nhật lạc quan) ---
+    // Trừ tồn kho ngay lập tức trong State để người dùng thấy thay đổi tức thì
+    const originalProducts = [...products];
+    setProducts(prev => prev.map(p => 
+      p.product_id === selectedProduct.product_id 
+        ? { ...p, stock: p.stock - qty } 
+        : p
+    ));
+
     try {
       const res = await noahApi.createOrder({
         user_id: Number(form.user_id),
         product_id: Number(form.product_id),
         quantity: qty
       });
-      setToast({ type: "success", msg: `✅ Đơn hàng #${res.data.order_id} đã được ghi nhận!` })
+      setToast({ type: "success", msg: `✅ Đơn hàng #${res.data.order_id} thành công!` });
+      
+      // Sau khi thành công, đợi 1 chút để Worker xử lý xong rồi tải lại dữ liệu chuẩn
+      setTimeout(loadProducts, 2500); 
     } catch (e) {
-      // Xử lý lỗi từ backend (bao gồm cả lỗi tồn kho nếu frontend chưa kịp update)
+      // Nếu lỗi (rollback), trả lại dữ liệu cũ
+      setProducts(originalProducts);
       const errorMsg = e.response?.data?.detail || e.message;
-      setToast({ type: "error", msg: `❌ Lỗi: ${errorMsg}` });
+      setToast({ type: "error", msg: `❌ Thất bại: ${errorMsg}` });
     } finally {
       setLoading(false)
     }
