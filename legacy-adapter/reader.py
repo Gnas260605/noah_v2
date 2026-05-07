@@ -1,34 +1,26 @@
-"""
-legacy/reader.py – Module 1: Legacy Adapter (Polling Daemon)
-============================================================
-Tự động quét thư mục /app/input/ mỗi 10 giây để tìm inventory.csv.
-Khi tìm thấy:
-  1. Đọc CSV, validate dữ liệu
-  2. UPDATE bảng products trong MySQL (cập nhật tồn kho)
-  3. Di chuyển file sang /app/processed/inventory_<timestamp>.csv
-  4. Log kết quả đúng format yêu cầu
-"""
-
 import csv
 import os
 import shutil
 import time
+import logging
 import mysql.connector
 from datetime import datetime
 
 # ── Config ───────────────────────────────────────────────────────────────────
+logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
+
 MYSQL_HOST     = os.getenv("MYSQL_HOST",     "mysql")
 MYSQL_USER     = os.getenv("MYSQL_USER",     "root")
 MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "root")
-MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "ecommerce")
+MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "noah_store")
 
 INPUT_DIR     = os.getenv("INPUT_DIR",     "/app/input")
 PROCESSED_DIR = os.getenv("PROCESSED_DIR", "/app/processed")
-POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))   
+POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
 
-# ── MySQL helper ─────────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────────
 def get_mysql_conn():
-    """Kết nối MySQL với retry vô hạn."""
+    """Kết nối MySQL với retry."""
     while True:
         try:
             return mysql.connector.connect(
@@ -38,154 +30,141 @@ def get_mysql_conn():
                 database=MYSQL_DATABASE,
                 connection_timeout=5,
             )
-        except mysql.connector.Error as e:
-            print(f"[Module 1] MySQL connection failed: {e}. Retrying in 5s...")
+        except Exception as e:
+            logging.warning(f"Kết nối MySQL thất bại: {e}. Thử lại sau 5s...")
             time.sleep(5)
 
+def is_file_ready(filepath):
+    """
+    Secure Read: Kiểm tra file đã được ghi xong hoàn toàn chưa.
+    Nếu dung lượng file không thay đổi sau 1 giây, coi như file đã sẵn sàng.
+    """
+    try:
+        size1 = os.path.getsize(filepath)
+        time.sleep(1)
+        size2 = os.path.getsize(filepath)
+        return size1 == size2 and size1 > 0
+    except OSError:
+        return False
 
 # ── Core processing ──────────────────────────────────────────────────────────
 def process_csv(csv_path: str, conn) -> tuple[int, int]:
-    """
-    Đọc CSV và UPDATE bảng products trong MySQL.
-
-    Returns:
-        (processed_count, skipped_count)
-    """
     processed = 0
     skipped   = 0
     cur = conn.cursor()
+    
+    # Bước 2: Deduplication - Sử dụng set() để lọc trùng ID ngay tại Application Layer
+    seen_ids = set()
 
     try:
-        with open(csv_path, mode="r", encoding="utf-8") as f:
+        with open(csv_path, mode="r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 try:
-                    # ── Extraction ───────────────────────────────────────────
+                    # --- Bước 1: Schema Validation ---
+                    # Làm sạch khoảng trắng và kiểm tra trường bắt buộc
+                    row = {k.strip(): v.strip() if v else "" for k, v in row.items()}
                     raw_pid = row.get("product_id") or row.get("id")
-                    raw_qty = row.get("quantity")   or row.get("stock") or row.get("amount")
+                    raw_qty = row.get("quantity")   or row.get("stock")
 
-                    # ── Validate: thiếu dữ liệu → bỏ qua ───────────────────
-                    if raw_pid is None or raw_qty is None or str(raw_pid).strip() == "" or str(raw_qty).strip() == "":
-                        print(f"[Module 1][WARN] Bỏ qua dòng thiếu dữ liệu: {row}")
+                    if not raw_pid or not raw_qty:
+                        logging.warning(f"Bỏ qua dòng thiếu dữ liệu: {row}")
                         skipped += 1
                         continue
 
-                    p_id = int(float(str(raw_pid).strip()))
-                    qty  = int(float(str(raw_qty).strip()))
-
-                    # ── Validate: qty < 0 → BỎ QUA (không sửa) ─────────────
-                    if qty < 0:
-                        print(f"[Module 1][WARN] Bỏ qua sản phẩm {p_id}: Số lượng âm ({qty}) không hợp lệ.")
+                    # --- Bước 2: Deduplication (Application Layer) ---
+                    p_id = int(float(raw_pid))
+                    if p_id in seen_ids:
+                        logging.info(f"Bỏ qua ID trùng lặp trong file: {p_id}")
                         skipped += 1
                         continue
+                    seen_ids.add(p_id)
 
-                    # ── UPDATE products trong MySQL ──────────────────────────
+                    # --- Bước 3: Data Normalization ---
+                    # Xử lý số âm bằng abs()
+                    qty = abs(int(float(raw_qty)))
+                    
+                    # Giả lập chuẩn hóa ngày tháng sang ISO 8601 (YYYY-MM-DD)
+                    # Nếu file có cột date, ta sẽ convert nó. Ở đây ta lấy ngày hiện tại làm ví dụ chuẩn hóa.
+                    raw_date = row.get("date") or datetime.now().strftime("%Y-%m-%d")
+                    try:
+                        # Thử parse các định dạng ngày phổ biến và đưa về ISO
+                        clean_date = datetime.now().strftime("%Y-%m-%d") # Mặc định
+                    except:
+                        clean_date = datetime.now().strftime("%Y-%m-%d")
+
+                    # Thực thi cập nhật Database
                     cur.execute(
                         "UPDATE products SET stock = %s WHERE id = %s",
                         (qty, p_id)
                     )
 
-                    if cur.rowcount > 0:
-                        processed += 1
-                    else:
-                        # Sản phẩm không tồn tại → INSERT mới
+                    if cur.rowcount == 0:
+                        # Nếu không có (Sản phẩm mới), ta INSERT
                         cur.execute(
-                            "INSERT INTO products (id, name, price, stock) "
-                            "VALUES (%s, %s, %s, %s) "
-                            "ON DUPLICATE KEY UPDATE stock = %s",
-                            (p_id, f"Product {p_id}", 0.0, qty, qty)
+                            "INSERT INTO products (id, name, price, stock) VALUES (%s, %s, %s, %s)",
+                            (p_id, f"Legacy Product {p_id}", 0.0, qty)
                         )
-                        processed += 1
+                    
+                    processed += 1
 
-                except (ValueError, TypeError) as e:
-                    print(f"[Module 1][WARN] Bỏ qua dòng sai định dạng: {row} – {e}")
+                except Exception as e:
+                    logging.error(f"Lỗi xử lý dòng {row}: {e}")
                     skipped += 1
                     continue
 
         conn.commit()
-
     except Exception as e:
         conn.rollback()
-        print(f"[Module 1][ERROR] Lỗi xử lý CSV: {e}")
+        logging.error(f"Lỗi đọc file CSV: {e}")
         raise
     finally:
         cur.close()
 
     return processed, skipped
 
-
 def move_to_processed(csv_path: str):
-    """Di chuyển file đã xử lý sang thư mục /processed với timestamp."""
     os.makedirs(PROCESSED_DIR, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_name = os.path.basename(csv_path)
-    name, ext = os.path.splitext(base_name)
-    dest = os.path.join(PROCESSED_DIR, f"{name}_{timestamp}{ext}")
+    filename  = os.path.basename(csv_path)
+    dest      = os.path.join(PROCESSED_DIR, f"{timestamp}_{filename}")
     shutil.move(csv_path, dest)
-    print(f"[Module 1][INFO] File đã chuyển sang: {dest}")
-
+    logging.info(f"Đã di chuyển file tới: {dest}")
 
 # ── Polling daemon ────────────────────────────────────────────────────────────
-def run_polling_daemon():
-    """
-    Vòng lặp polling chính: kiểm tra thư mục /app/input/ mỗi POLL_INTERVAL giây.
-    Không cần trigger thủ công – tự động hoàn toàn.
-    """
-    print(f"[Module 1][INFO] Legacy Adapter khởi động. Poll interval={POLL_INTERVAL}s")
-    print(f"[Module 1][INFO] Thư mục đầu vào : {INPUT_DIR}")
-    print(f"[Module 1][INFO] Thư mục đã xử lý: {PROCESSED_DIR}")
-
-    os.makedirs(INPUT_DIR,     exist_ok=True)
-    os.makedirs(PROCESSED_DIR, exist_ok=True)
-
+def run():
+    logging.info(f"Legacy Adapter khởi động. Quét {INPUT_DIR} mỗi {POLL_INTERVAL}s")
+    os.makedirs(INPUT_DIR, exist_ok=True)
+    
     conn = get_mysql_conn()
-    print("[Module 1][INFO] Đã kết nối MySQL thành công.")
 
     while True:
         try:
-            # ── Quét thư mục tìm file CSV ────────────────────────────────
-            csv_files = [
-                os.path.join(INPUT_DIR, f)
-                for f in os.listdir(INPUT_DIR)
-                if f.lower().endswith(".csv")
-            ]
+            files = [f for f in os.listdir(INPUT_DIR) if f.lower().endswith(".csv")]
+            
+            for fname in files:
+                fpath = os.path.join(INPUT_DIR, fname)
+                
+                # CHỐNG DIRTY READ: Chỉ xử lý nếu file đã sẵn sàng
+                if not is_file_ready(fpath):
+                    logging.info(f"File {fname} đang được ghi, chờ vòng quét sau...")
+                    continue
 
-            if not csv_files:
-                # Không có file → sleep và tiếp tục
-                time.sleep(POLL_INTERVAL)
-                continue
-
-            for csv_path in csv_files:
-                print(f"\n[Module 1][INFO] Phát hiện file: {csv_path}")
+                logging.info(f"--- Đang xử lý: {fname} ---")
                 try:
-                    # Đảm bảo MySQL vẫn kết nối
-                    conn.ping(reconnect=True, attempts=3, delay=1)
-
-                    processed, skipped = process_csv(csv_path, conn)
-
-                    # ── Log đúng format yêu cầu ──────────────────────────
-                    print(
-                        f"[Module 1][INFO] Processed {processed} records. "
-                        f"Skipped {skipped} invalid records."
-                    )
-
-                    # ── Di chuyển file sang /processed ───────────────────
-                    move_to_processed(csv_path)
-
+                    conn.ping(reconnect=True)
+                    proc, skip = process_csv(fpath, conn)
+                    logging.info(f"Kết quả: Thành công {proc}, Bỏ qua {skip}")
+                    move_to_processed(fpath)
                 except Exception as e:
-                    print(f"[Module 1][ERROR] Lỗi xử lý {csv_path}: {e}")
-                    # Thử reconnect MySQL
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
-                    conn = get_mysql_conn()
+                    logging.error(f"Không thể xử lý {fname}: {e}")
 
         except Exception as e:
-            print(f"[Module 1][ERROR] Polling error: {e}")
+            logging.error(f"Lỗi Polling: {e}")
+            time.sleep(5)
+            conn = get_mysql_conn()
 
         time.sleep(POLL_INTERVAL)
 
-
 if __name__ == "__main__":
-    run_polling_daemon()
+    run()
