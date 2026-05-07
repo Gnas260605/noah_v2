@@ -17,6 +17,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logging.error(f"Global Error: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Lỗi hệ thống: {str(exc)}"},
+    )
+
 class OrderRequest(BaseModel):
     user_id:    int
     product_id: int
@@ -58,6 +68,7 @@ def get_rabbitmq():
 @app.post("/api/orders", status_code=202)
 def create_order(order: OrderRequest):
     # Bước 1: Lưu thông tin đơn hàng vào MySQL với trạng thái PENDING
+    db = None
     try:
         db = connect_with_retry(get_mysql, "MySQL")
         cur = db.cursor()
@@ -66,7 +77,7 @@ def create_order(order: OrderRequest):
         cur.execute("SELECT price FROM products WHERE id = %s", (order.product_id,))
         row = cur.fetchone()
         if not row:
-            cur.close(); db.close()
+            cur.close()
             raise HTTPException(status_code=404, detail="Sản phẩm không tồn tại")
         
         price       = row[0]
@@ -78,11 +89,13 @@ def create_order(order: OrderRequest):
         )
         db.commit()
         order_id = cur.lastrowid
-        cur.close(); db.close()
+        cur.close()
     except Exception as e:
         if isinstance(e, HTTPException): raise e
         logging.error(f"Lỗi MySQL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if db: db.close()
 
     # Bước 2: Đẩy đơn hàng vào hàng đợi RabbitMQ để xử lý bất đồng bộ
     try:

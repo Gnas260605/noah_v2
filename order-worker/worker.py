@@ -162,25 +162,36 @@ def callback(ch, method, properties, body):
         order = json.loads(body)
         logging.info(f"Đang xử lý đơn hàng #{order['order_id']}...")
 
+        # YÊU CẦU MODULE 2B: Giả lập độ trễ 2 giây để xử lý thanh toán phức tạp
+        time.sleep(2)
+
         # Bước 1: Ghi vào PostgreSQL (Hệ thống Tài chính)
-        pg = connect_with_retry(get_postgres, "PostgreSQL")
-        pg_cur = pg.cursor()
-        pg_cur.execute(
-            "INSERT INTO transactions (order_id, user_id, amount) VALUES (%s,%s,%s) ON CONFLICT (order_id) DO NOTHING",
-            (order['order_id'], order['user_id'], order['total_price'])
-        )
-        pg.commit()
-        pg_cur.close(); pg.close()
+        pg = None
+        try:
+            pg = connect_with_retry(get_postgres, "PostgreSQL")
+            pg_cur = pg.cursor()
+            pg_cur.execute(
+                "INSERT INTO transactions (order_id, user_id, amount) VALUES (%s,%s,%s) ON CONFLICT (order_id) DO NOTHING",
+                (order['order_id'], order['user_id'], order['total_price'])
+            )
+            pg.commit()
+            pg_cur.close()
+        finally:
+            if pg: pg.close()
 
         # Bước 2: Cập nhật trạng thái trong MySQL (Cửa hàng): PENDING -> SYNCED
-        db  = connect_with_retry(get_mysql, "MySQL")
-        cur = db.cursor()
-        cur.execute(
-            "UPDATE orders SET status='SYNCED' WHERE id = %s",
-            (order['order_id'],)
-        )
-        db.commit()
-        cur.close(); db.close()
+        db = None
+        try:
+            db = connect_with_retry(get_mysql, "MySQL")
+            cur = db.cursor()
+            cur.execute(
+                "UPDATE orders SET status='SYNCED' WHERE id = %s",
+                (order['order_id'],)
+            )
+            db.commit()
+            cur.close()
+        finally:
+            if db: db.close()
 
         # Bước 3: Kích hoạt gửi thông báo bất đồng bộ (Side effect)
         threading.Thread(target=send_notification, args=(order,), daemon=True).start()

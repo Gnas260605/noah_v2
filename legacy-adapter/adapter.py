@@ -91,6 +91,7 @@ def main():
     
     logging.info(f"Đang quét thư mục {INPUT_DIR} mỗi {POLL_INTERVAL} giây...")
     while True:
+        cursor = None
         try:
             if not conn.is_connected():
                 conn = get_db_connection()
@@ -104,15 +105,23 @@ def main():
                     else:
                         logging.info(f"Đang xử lý file: {fname}")
                     
-                    process_file(fpath, cursor, conn)
-                    move_to_processed(fpath)
+                    try:
+                        process_file(fpath, cursor, conn)
+                        move_to_processed(fpath)
+                    except Exception as e:
+                        logging.error(f"Không thể xử lý file {fname}: {e}")
             
-            cursor.close()
         except Exception as e:
             logging.error(f"Lỗi trong vòng lặp quét file: {e}")
             time.sleep(5)
-            try: conn = get_db_connection()
-            except: pass
+            try: 
+                conn = get_db_connection()
+            except: 
+                pass
+        finally:
+            if cursor: 
+                try: cursor.close()
+                except: pass
 
         time.sleep(POLL_INTERVAL)
 

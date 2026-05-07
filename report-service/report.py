@@ -17,6 +17,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logging.error(f"Global Error: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Hệ thống gặp sự cố: {str(exc)}"},
+    )
+
 def connect_with_retry(connect_fn, name, retries=10, wait=5):
     """Cơ chế thử lại kết nối tới cơ sở dữ liệu."""
     for i in range(retries):
@@ -45,17 +55,21 @@ def get_postgres():
 
 def get_mysql_df(query: str, params=None):
     """Lấy dữ liệu từ MySQL và trả về DataFrame."""
-    conn = connect_with_retry(get_mysql, "MySQL")
-    df = pd.read_sql(query, conn, params=params)
-    conn.close()
-    return df
+    conn = None
+    try:
+        conn = connect_with_retry(get_mysql, "MySQL")
+        return pd.read_sql(query, conn, params=params)
+    finally:
+        if conn: conn.close()
 
 def get_pg_df(query: str, params=None):
     """Lấy dữ liệu từ PostgreSQL và trả về DataFrame."""
-    conn = connect_with_retry(get_postgres, "PostgreSQL")
-    df = pd.read_sql(query, conn, params=params)
-    conn.close()
-    return df
+    conn = None
+    try:
+        conn = connect_with_retry(get_postgres, "PostgreSQL")
+        return pd.read_sql(query, conn, params=params)
+    finally:
+        if conn: conn.close()
 
 @app.get("/api/report")
 def get_report(page: int = Query(1, ge=1), page_size: int = Query(20, le=100)):
