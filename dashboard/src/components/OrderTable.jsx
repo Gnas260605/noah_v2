@@ -46,6 +46,8 @@ export default function OrderTable() {
 
   useEffect(() => {
     fetchOrders()
+    const timer = setInterval(fetchOrders, 5000)
+    return () => clearInterval(timer)
   }, [page])
 
   const filtered = search

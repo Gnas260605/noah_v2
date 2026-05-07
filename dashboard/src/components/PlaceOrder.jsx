@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { noahApi } from "../services/api"
-import { ShoppingCart, CheckCircle, XCircle, RefreshCw } from "lucide-react"
+import { ShoppingCart, CheckCircle, XCircle, RefreshCw, Package, User, CreditCard, Info } from "lucide-react"
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN",{style:"currency",currency:"VND"}).format(v)
 
@@ -47,79 +47,139 @@ export default function PlaceOrder() {
   }
 
   return (
-    <div className="max-w-lg">
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
-        <div className="flex items-center gap-2 mb-1">
-          <ShoppingCart size={20} className="text-orange-500" />
-          <h3 className="font-semibold text-slate-800">Tạo đơn hàng mới</h3>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+      {/* Left Column: Form */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-slate-50 border-b border-slate-100 p-6 flex items-center gap-3">
+          <div className="p-2.5 bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-100">
+            <ShoppingCart size={22} />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-800 text-lg">Tạo đơn hàng mới</h3>
+            <p className="text-xs text-slate-500 font-medium">Hoàn tất thông tin để đặt hàng</p>
+          </div>
         </div>
 
-        {/* User ID */}
-        <div>
-          <label className="block text-sm font-medium text-slate-600 mb-1.5">User ID</label>
-          <input
-            type="number" min={1}
-            value={form.user_id}
-            onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))}
-            className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-          />
-        </div>
+        <div className="p-6 space-y-6">
+          {/* User ID */}
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-2">
+              <User size={16} className="text-slate-400" />
+              Mã khách hàng (User ID)
+            </label>
+            <input
+              type="number" min={1}
+              value={form.user_id}
+              onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))}
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:bg-white bg-slate-50 transition-all"
+            />
+          </div>
 
-        {/* Product */}
-        <div>
-          <label className="block text-sm font-medium text-slate-600 mb-1.5">Sản phẩm</label>
-          <select
-            value={form.product_id}
-            onChange={e => setForm(f => ({ ...f, product_id: e.target.value }))}
-            className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+          {/* Product */}
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-2">
+              <Package size={16} className="text-slate-400" />
+              Chọn sản phẩm
+            </label>
+            <select
+              value={form.product_id}
+              onChange={e => setForm(f => ({ ...f, product_id: e.target.value }))}
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:bg-white bg-slate-50 transition-all appearance-none cursor-pointer"
+            >
+              {products.length === 0 && <option>Đang tải sản phẩm...</option>}
+              {products.map(p => (
+                <option key={p.product_id} value={p.product_id}>
+                  {p.name} — {formatVND(p.price)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Quantity */}
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-2">
+              <CreditCard size={16} className="text-slate-400" />
+              Số lượng đặt mua
+            </label>
+            <input
+              type="number" min={1}
+              value={form.quantity}
+              onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))}
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:bg-white bg-slate-50 transition-all"
+            />
+          </div>
+
+          {/* Submit */}
+          <button
+            onClick={handleSubmit}
+            disabled={loading || !form.product_id}
+            className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 disabled:opacity-50 transition-all shadow-xl shadow-slate-100 flex items-center justify-center gap-3 text-base"
           >
-            {products.length === 0 && <option>Đang tải sản phẩm...</option>}
-            {products.map(p => (
-              <option key={p.product_id} value={p.product_id}>
-                {p.name} — {formatVND(p.price)} (Còn {p.stock})
-              </option>
-            ))}
-          </select>
-        </div>
+            {loading ? <RefreshCw size={20} className="animate-spin" /> : <ShoppingCart size={20} />}
+            {loading ? "Đang xử lý..." : "Xác nhận đặt hàng"}
+          </button>
 
-        {/* Quantity */}
-        <div>
-          <label className="block text-sm font-medium text-slate-600 mb-1.5">Số lượng</label>
-          <input
-            type="number" min={1}
-            value={form.quantity}
-            onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))}
-            className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-          />
-        </div>
-
-        {/* Estimate */}
-        {selectedProduct && (
-          <div className="bg-orange-50 border border-orange-100 rounded-lg px-4 py-3 text-sm">
-            <div className="flex justify-between items-center">
-              <span className="text-slate-600">Ước tính:</span>
-              <span className="font-bold text-orange-600 text-lg">{formatVND(estimatedTotal)}</span>
+          {/* Toast */}
+          {toast && (
+            <div className={`flex items-start gap-3 p-4 rounded-xl text-sm border animate-in fade-in slide-in-from-top-2 duration-300 ${toast.type === "success" ? "bg-green-50 border-green-100 text-green-700" : "bg-red-50 border-red-100 text-red-700"}`}>
+              {toast.type === "success" ? <CheckCircle size={20} className="shrink-0" /> : <XCircle size={20} className="shrink-0" />}
+              <span className="font-semibold">{toast.msg}</span>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      </div>
 
-        {/* Submit */}
-        <button
-          onClick={handleSubmit}
-          disabled={loading || !form.product_id}
-          className="w-full py-3 bg-orange-500 text-white rounded-lg font-bold hover:bg-orange-600 disabled:opacity-50 transition-all shadow-lg shadow-orange-100 flex items-center justify-center gap-2"
-        >
-          {loading ? <RefreshCw size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
-          {loading ? "Đang gửi đơn hàng..." : "Đặt hàng ngay"}
-        </button>
-
-        {/* Toast */}
-        {toast && (
-          <div className={`flex items-start gap-2 p-4 rounded-xl text-sm border ${toast.type === "success" ? "bg-green-50 border-green-100 text-green-700" : "bg-red-50 border-red-100 text-red-700"}`}>
-            {toast.type === "success" ? <CheckCircle size={18} className="mt-0.5 shrink-0" /> : <XCircle size={18} className="mt-0.5 shrink-0" />}
-            <span className="font-medium">{toast.msg}</span>
+      {/* Right Column: Preview & Summary */}
+      <div className="space-y-6">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <Info size={18} className="text-blue-500" />
+            <h4 className="font-bold text-slate-800">Chi tiết đơn hàng</h4>
           </div>
-        )}
+
+          {selectedProduct ? (
+            <div className="space-y-6">
+              <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="w-16 h-16 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600">
+                  <Package size={32} />
+                </div>
+                <div>
+                  <h5 className="font-bold text-slate-900">{selectedProduct.name}</h5>
+                  <p className="text-xs text-slate-500 font-mono">ID: #{selectedProduct.product_id}</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Đơn giá</span>
+                  <span className="font-semibold text-slate-800">{formatVND(selectedProduct.price)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Số lượng</span>
+                  <span className="font-semibold text-slate-800">x {form.quantity}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Trạng thái kho</span>
+                  <span className={`font-bold ${selectedProduct.stock > 0 ? "text-green-600" : "text-red-600"}`}>
+                    {selectedProduct.stock > 0 ? `Còn ${selectedProduct.stock} sản phẩm` : "Hết hàng"}
+                  </span>
+                </div>
+                <div className="h-px bg-slate-100 my-2" />
+                <div className="flex justify-between items-center pt-2">
+                  <span className="font-bold text-slate-900 text-base">Tổng cộng</span>
+                  <span className="font-black text-orange-600 text-2xl">{formatVND(estimatedTotal)}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-12 text-center">
+              <Package size={48} className="mx-auto text-slate-200 mb-3" />
+              <p className="text-sm text-slate-400 font-medium">Vui lòng chọn sản phẩm để xem trước</p>
+            </div>
+          )}
+        </div>
+
+
       </div>
     </div>
   )

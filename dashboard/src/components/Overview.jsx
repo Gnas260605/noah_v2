@@ -67,7 +67,7 @@ export default function Overview() {
 
   useEffect(() => {
     fetchData()
-    intervalRef.current = setInterval(fetchData, 10000) // Poll faster (10s) for real-time feel
+    intervalRef.current = setInterval(fetchData, 5000) // Poll faster (5s) for real-time feel
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }

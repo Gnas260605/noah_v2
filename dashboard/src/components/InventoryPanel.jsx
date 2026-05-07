@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react"
 import { noahApi } from "../services/api"
-import { Package, RefreshCw, Search, AlertTriangle, TrendingDown, CheckCircle, Filter } from "lucide-react"
+import { Package, RefreshCw, Search, AlertTriangle, TrendingDown, CheckCircle, Filter, ChevronLeft, ChevronRight } from "lucide-react"
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(v)
 
@@ -14,6 +14,8 @@ export default function InventoryPanel() {
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState("")
   const [filter, setFilter]     = useState("all") // all, low, out
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 9
 
   const fetchInventory = () => {
     setLoading(true)
@@ -25,7 +27,14 @@ export default function InventoryPanel() {
 
   useEffect(() => {
     fetchInventory()
+    const timer = setInterval(fetchInventory, 5000)
+    return () => clearInterval(timer)
   }, [])
+
+  // Reset to page 1 when filter or search changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filter, search])
 
   const stats = useMemo(() => {
     return {
@@ -45,6 +54,12 @@ export default function InventoryPanel() {
       })
   }, [products, search, filter])
 
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage)
+  const paginatedProducts = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage
+    return filteredProducts.slice(start, start + itemsPerPage)
+  }, [filteredProducts, currentPage])
+
   if (loading) {
     return (
       <div className="py-24 text-center text-slate-400">
@@ -57,38 +72,38 @@ export default function InventoryPanel() {
   return (
     <div className="space-y-6">
       {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
+          <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
             <Package size={24} />
           </div>
           <div>
-            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Tổng sản phẩm</p>
-            <p className="text-2xl font-bold text-slate-800">{stats.total}</p>
+            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-tight">Tổng sản phẩm</p>
+            <p className="text-xl font-bold text-slate-800">{stats.total}</p>
           </div>
         </div>
-        <div className={`bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4 ${stats.low > 0 ? "border-yellow-200 bg-yellow-50/30" : "border-slate-200"}`}>
-          <div className="p-3 bg-yellow-50 text-yellow-600 rounded-lg">
+        <div className={`bg-white p-3 rounded-xl border shadow-sm flex items-center gap-3 ${stats.low > 0 ? "border-yellow-200 bg-yellow-50/30" : "border-slate-200"}`}>
+          <div className="p-2 bg-yellow-50 text-yellow-600 rounded-lg">
             <TrendingDown size={24} />
           </div>
           <div>
-            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Sắp hết hàng</p>
-            <p className="text-2xl font-bold text-slate-800">{stats.low}</p>
+            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-tight">Sắp hết hàng</p>
+            <p className="text-xl font-bold text-slate-800">{stats.low}</p>
           </div>
         </div>
-        <div className={`bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4 ${stats.out > 0 ? "border-red-200 bg-red-50/30" : "border-slate-200"}`}>
-          <div className="p-3 bg-red-50 text-red-600 rounded-lg">
+        <div className={`bg-white p-3 rounded-xl border shadow-sm flex items-center gap-3 ${stats.out > 0 ? "border-red-200 bg-red-50/30" : "border-slate-200"}`}>
+          <div className="p-2 bg-red-50 text-red-600 rounded-lg">
             <AlertTriangle size={24} />
           </div>
           <div>
-            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Hết hàng</p>
-            <p className="text-2xl font-bold text-slate-800">{stats.out}</p>
+            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-tight">Hết hàng</p>
+            <p className="text-xl font-bold text-slate-800">{stats.out}</p>
           </div>
         </div>
       </div>
 
       {/* Toolbar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between">
+      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-3 items-center justify-between">
         <div className="relative w-full sm:max-w-md">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -127,72 +142,119 @@ export default function InventoryPanel() {
         </div>
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {filteredProducts.length === 0 ? (
-          <div className="col-span-full py-12 text-center text-slate-400 bg-white rounded-xl border border-dashed border-slate-300">
-            Không tìm thấy sản phẩm phù hợp.
-          </div>
-        ) : filteredProducts.map((p) => {
-          const isCritical = p.stock <= STOCK_THRESHOLDS.CRITICAL
-          const isLow = p.stock < STOCK_THRESHOLDS.LOW
-          const pct = Math.min((p.stock / 200) * 100, 100) // Scale to 200 units for visualization
-          
-          let statusLabel = "Ổn định"
-          let statusColor = "bg-green-500"
-          let badgeColor = "text-green-600 bg-green-50"
-          let Icon = CheckCircle
-
-          if (p.stock <= 0) {
-            statusLabel = "Hết hàng"
-            statusColor = "bg-red-500"
-            badgeColor = "text-red-600 bg-red-50"
-            Icon = AlertTriangle
-          } else if (isCritical) {
-            statusLabel = "Nguy cấp"
-            statusColor = "bg-red-400"
-            badgeColor = "text-red-500 bg-red-50"
-            Icon = AlertTriangle
-          } else if (isLow) {
-            statusLabel = "Cảnh báo"
-            statusColor = "bg-yellow-500"
-            badgeColor = "text-yellow-600 bg-yellow-50"
-            Icon = TrendingDown
-          }
-
-          return (
-            <div key={p.product_id} className="group bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-lg hover:border-orange-200 transition-all">
-              <div className="flex items-start justify-between mb-3">
-                <div className="p-2 bg-orange-50 rounded-lg group-hover:bg-orange-100 transition-colors">
-                  <Package size={20} className="text-orange-500" />
-                </div>
-                <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${badgeColor}`}>
-                  <Icon size={10} />
-                  {statusLabel}
-                </span>
-              </div>
-              
-              <div className="mb-4">
-                <h4 className="font-bold text-slate-800 truncate group-hover:text-orange-600 transition-colors">{p.name}</h4>
-                <p className="text-slate-400 text-[10px] font-mono">#{p.product_id}</p>
-                <p className="text-lg font-extrabold text-slate-900 mt-1">{formatVND(p.price)}</p>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-[11px] font-medium">
-                  <span className="text-slate-500">Tồn kho hiện tại</span>
-                  <span className="text-slate-900">{p.stock} sp</span>
-                </div>
-                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                  <div 
-                    className={`${statusColor} h-full rounded-full transition-all duration-500 ease-out`} 
-                    style={{ width: `${pct}%` }} 
-                  />
-                </div>
-              </div>
+      {/* Grid Container with Fixed Height to strictly fix pagination position */}
+      <div className="h-[580px] flex flex-col justify-between">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-3">
+          {paginatedProducts.length === 0 ? (
+            <div className="col-span-full py-12 text-center text-slate-400 bg-white rounded-xl border border-dashed border-slate-300">
+              Không tìm thấy sản phẩm phù hợp.
             </div>
-          )
-        })}
+          ) : paginatedProducts.map((p) => {
+            const isCritical = p.stock <= STOCK_THRESHOLDS.CRITICAL
+            const isLow = p.stock < STOCK_THRESHOLDS.LOW
+            const pct = Math.min((p.stock / 200) * 100, 100)
+            
+            let statusLabel = "Ổn định"
+            let statusColor = "bg-green-500"
+            let badgeColor = "text-green-600 bg-green-50"
+            let Icon = CheckCircle
+
+            if (p.stock <= 0) {
+              statusLabel = "Hết hàng"
+              statusColor = "bg-red-500"
+              badgeColor = "text-red-600 bg-red-50"
+              Icon = AlertTriangle
+            } else if (isCritical) {
+              statusLabel = "Nguy cấp"
+              statusColor = "bg-red-400"
+              badgeColor = "text-red-500 bg-red-50"
+              Icon = AlertTriangle
+            } else if (isLow) {
+              statusLabel = "Cảnh báo"
+              statusColor = "bg-yellow-500"
+              badgeColor = "text-yellow-600 bg-yellow-50"
+              Icon = TrendingDown
+            }
+
+            return (
+              <div key={p.product_id} className="group bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:shadow-md hover:border-orange-200 transition-all">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="p-1.5 bg-orange-50 rounded-md group-hover:bg-orange-100 transition-colors">
+                    <Package size={20} className="text-orange-500" />
+                  </div>
+                  <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${badgeColor}`}>
+                    <Icon size={10} />
+                    {statusLabel}
+                  </span>
+                </div>
+                
+                <div className="mb-2">
+                  <h4 className="font-bold text-sm text-slate-800 truncate group-hover:text-orange-600 transition-colors">{p.name}</h4>
+                  <p className="text-slate-400 text-[9px] font-mono">#{p.product_id}</p>
+                  <p className="text-base font-extrabold text-slate-900 mt-0.5">{formatVND(p.price)}</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-[11px] font-medium">
+                    <span className="text-slate-500">Tồn kho hiện tại</span>
+                    <span className="text-slate-900">{p.stock} sp</span>
+                  </div>
+                  <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                    <div 
+                      className={`${statusColor} h-full rounded-full transition-all duration-500 ease-out`} 
+                      style={{ width: `${pct}%` }} 
+                    />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-4 py-6 mt-4 border-t border-slate-100">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="flex items-center gap-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+              <ChevronLeft size={18} />
+              Trước
+            </button>
+            
+            <div className="flex items-center gap-2">
+              {/* Logic to show only relevant page numbers if many pages exist */}
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                .map((p, i, arr) => (
+                  <div key={p} className="flex items-center gap-2">
+                    {i > 0 && p - arr[i-1] > 1 && <span className="text-slate-400">...</span>}
+                    <button
+                      onClick={() => setCurrentPage(p)}
+                      className={`w-9 h-9 rounded-lg text-sm font-bold transition-all
+                        ${currentPage === p 
+                          ? "bg-orange-500 text-white shadow-md shadow-orange-200" 
+                          : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                        }`}
+                    >
+                      {p}
+                    </button>
+                  </div>
+                ))
+              }
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="flex items-center gap-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+              Tiếp
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

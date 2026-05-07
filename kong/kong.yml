@@ -1,5 +1,6 @@
 _format_version: "3.0"
 
+# 1. GLOBAL PLUGINS (Bật cho toàn bộ Gateway)
 plugins:
   - name: cors
     config:
@@ -10,6 +11,7 @@ plugins:
       credentials: false
       max_age: 3600
 
+# 2. SERVICES & ROUTES (Điều hướng traffic)
 services:
   - name: order-api-service
     url: http://order-api:5001
@@ -33,10 +35,15 @@ services:
         paths: ["/report"]
         strip_path: true
     plugins:
+      - name: rate-limiting
+        config:
+          minute: 10
+          policy: local
       - name: key-auth
         config:
           key_names: [apikey]
 
+# 3. CONSUMERS (Định danh khách hàng được phép truy cập)
 consumers:
   - username: dashboard-client
     keyauth_credentials:
