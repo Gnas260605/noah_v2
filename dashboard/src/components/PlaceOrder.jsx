@@ -26,6 +26,10 @@ export default function PlaceOrder() {
 
   const handleSubmit = async () => {
     if (!form.product_id) return;
+    if (Number(form.quantity) <= 0) {
+      setToast({ type: "error", msg: "❌ Số lượng phải lớn hơn 0" });
+      return;
+    }
     setLoading(true)
     setToast(null)
     try {
@@ -36,7 +40,7 @@ export default function PlaceOrder() {
       });
       setToast({ type: "success", msg: `✅ Đơn hàng #${res.data.order_id} đã được ghi nhận!` })
     } catch (e) {
-      setToast({ type: "error", msg: `❌ Lỗi: ${e.message}` })
+      setToast({ type: "error", msg: `❌ Lỗi: ${typeof e.message === 'object' ? JSON.stringify(e.message) : e.message}` })
     } finally {
       setLoading(false)
     }

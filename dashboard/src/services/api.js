@@ -16,8 +16,15 @@ const apiClient = axios.create({
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    let errorMessage = error.message || "Unknown error";
+    if (error.response?.data?.detail) {
+      const detail = error.response.data.detail;
+      errorMessage = Array.isArray(detail) 
+        ? detail.map(d => d.msg).join(", ") 
+        : detail;
+    }
     const customError = {
-      message: error.response?.data?.detail || error.message || "Unknown error",
+      message: errorMessage,
       status: error.response?.status,
       originalError: error,
     };

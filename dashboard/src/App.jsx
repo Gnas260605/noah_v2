@@ -62,7 +62,7 @@ export default function App() {
       {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Top Header */}
-        <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between shrink-0">
+        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
           <div>
             <h2 className="text-xl font-semibold text-slate-800">
               {navItems.find(n => n.id === active)?.label}
@@ -74,7 +74,7 @@ export default function App() {
           </span>
         </header>
         {/* Page Content */}
-        <div className="flex-1 overflow-auto p-8">
+        <div className="flex-1 overflow-auto p-2">
           {renderContent()}
         </div>
       </main>
