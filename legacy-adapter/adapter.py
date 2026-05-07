@@ -67,7 +67,9 @@ def process_file(filepath: str, cursor, conn):
                     skipped += 1
 
         conn.commit()
-        logging.info(f"File {os.path.basename(filepath)}: Đã xử lý {processed}, Bỏ qua {skipped}")
+        # Hiển thị log tóm tắt theo yêu cầu của thầy
+        summary = f"Processed {processed} records. Skipped {skipped} invalid records."
+        logging.info(f"File {os.path.basename(filepath)}: {summary}")
     except Exception as e:
         logging.error(f"Lỗi khi đọc file {filepath}: {e}")
         raise e
@@ -97,7 +99,11 @@ def main():
             for fname in os.listdir(INPUT_DIR):
                 if fname.endswith(".csv"):
                     fpath = os.path.join(INPUT_DIR, fname)
-                    logging.info(f"Đang xử lý file: {fname}")
+                    if fname == "inventory.csv":
+                        logging.info(f"--- Đang xử lý file yêu cầu: {fname} ---")
+                    else:
+                        logging.info(f"Đang xử lý file: {fname}")
+                    
                     process_file(fpath, cursor, conn)
                     move_to_processed(fpath)
             
