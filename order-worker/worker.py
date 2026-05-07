@@ -179,17 +179,27 @@ def callback(ch, method, properties, body):
         finally:
             if pg: pg.close()
 
-        # Bước 2: Cập nhật trạng thái trong MySQL (Cửa hàng): PENDING -> SYNCED
+        # Bước 2: Cập nhật MySQL (Cửa hàng)
         db = None
         try:
             db = connect_with_retry(get_mysql, "MySQL")
             cur = db.cursor()
+            
+            # A. Cập nhật trạng thái đơn hàng: PENDING -> SYNCED
             cur.execute(
                 "UPDATE orders SET status='SYNCED' WHERE id = %s",
                 (order['order_id'],)
             )
+            
+            # B. TRỪ TỒN KHO (Inventory Deduction): Giảm số lượng sản phẩm thực tế
+            cur.execute(
+                "UPDATE products SET stock = stock - %s WHERE id = %s",
+                (order['quantity'], order['product_id'])
+            )
+            
             db.commit()
             cur.close()
+            logging.info(f"Đã trừ {order['quantity']} sản phẩm #{order['product_id']} khỏi kho.")
         finally:
             if db: db.close()
 
