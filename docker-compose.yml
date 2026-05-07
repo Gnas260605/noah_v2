@@ -7,6 +7,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
+      TZ: Asia/Ho_Chi_Minh
+    command: --default-time-zone="+07:00"
     ports:
       - "3307:3306"
     volumes:
@@ -27,6 +29,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: Asia/Ho_Chi_Minh
     ports:
       - "5432:5432"
     volumes:
@@ -45,6 +48,7 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      TZ: Asia/Ho_Chi_Minh
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -79,6 +83,8 @@ services:
     build: ./legacy-adapter
     container_name: noah-legacy-adapter
     env_file: .env
+    environment:
+      TZ: Asia/Ho_Chi_Minh
     volumes:
       - ./legacy-adapter/input:/app/input
       - ./legacy-adapter/processed:/app/processed
@@ -91,6 +97,8 @@ services:
     build: ./order-api
     container_name: noah-order-api
     env_file: .env
+    environment:
+      TZ: Asia/Ho_Chi_Minh
     depends_on:
       mysql:
         condition: service_healthy
@@ -102,6 +110,8 @@ services:
     build: ./order-worker
     container_name: noah-order-worker
     env_file: .env
+    environment:
+      TZ: Asia/Ho_Chi_Minh
     depends_on:
       postgres:
         condition: service_healthy
@@ -113,6 +123,8 @@ services:
     build: ./report-service
     container_name: noah-report-service
     env_file: .env
+    environment:
+      TZ: Asia/Ho_Chi_Minh
     depends_on:
       mysql:
         condition: service_healthy
