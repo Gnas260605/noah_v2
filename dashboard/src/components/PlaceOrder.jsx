@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { noahApi } from "../services/api"
-import { ShoppingCart, CheckCircle, XCircle, RefreshCw, Package, User, CreditCard, Info } from "lucide-react"
+import { ShoppingCart, CheckCircle, XCircle, RefreshCw, Package, User, CreditCard, Info, AlertCircle } from "lucide-react"
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN",{style:"currency",currency:"VND"}).format(v)
 
@@ -26,21 +26,35 @@ export default function PlaceOrder() {
 
   const handleSubmit = async () => {
     if (!form.product_id) return;
-    if (Number(form.quantity) <= 0) {
+    
+    const qty = Number(form.quantity);
+    if (qty <= 0) {
       setToast({ type: "error", msg: "❌ Số lượng phải lớn hơn 0" });
       return;
     }
+
+    // KIỂM TRA TỒN KHO NGAY TẠI FRONTEND
+    if (selectedProduct && qty > selectedProduct.stock) {
+      setToast({ 
+        type: "error", 
+        msg: `❌ Không đủ hàng! Hiện chỉ còn ${selectedProduct.stock} sản phẩm trong kho.` 
+      });
+      return;
+    }
+
     setLoading(true)
     setToast(null)
     try {
       const res = await noahApi.createOrder({
         user_id: Number(form.user_id),
         product_id: Number(form.product_id),
-        quantity: Number(form.quantity)
+        quantity: qty
       });
       setToast({ type: "success", msg: `✅ Đơn hàng #${res.data.order_id} đã được ghi nhận!` })
     } catch (e) {
-      setToast({ type: "error", msg: `❌ Lỗi: ${typeof e.message === 'object' ? JSON.stringify(e.message) : e.message}` })
+      // Xử lý lỗi từ backend (bao gồm cả lỗi tồn kho nếu frontend chưa kịp update)
+      const errorMsg = e.response?.data?.detail || e.message;
+      setToast({ type: "error", msg: `❌ Lỗi: ${errorMsg}` });
     } finally {
       setLoading(false)
     }
@@ -102,18 +116,45 @@ export default function PlaceOrder() {
               Số lượng đặt mua
             </label>
             <input
-              type="number" min={1}
+              type="number" 
+              min={1}
               value={form.quantity}
-              onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))}
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:bg-white bg-slate-50 transition-all"
+              onChange={e => {
+                const val = e.target.value;
+                // Chặn nhập số âm hoặc 0 ngay lập tức
+                if (val !== "" && Number(val) <= 0) return;
+                setForm(f => ({ ...f, quantity: val }));
+              }}
+              className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 transition-all ${
+                selectedProduct && Number(form.quantity) > selectedProduct.stock 
+                  ? "border-red-500 bg-red-50 focus:ring-red-500 ring-2 ring-red-100" 
+                  : "border-slate-200 bg-slate-50 focus:ring-orange-400 focus:bg-white"
+              }`}
+              placeholder="Nhập số lượng..."
             />
+            {selectedProduct && Number(form.quantity) > selectedProduct.stock && (
+              <p className="text-[11px] text-red-600 font-bold mt-2 flex items-center gap-1 animate-pulse">
+                <AlertCircle size={14} />
+                CẢNH BÁO: Vượt quá tồn kho ({selectedProduct.stock})
+              </p>
+            )}
           </div>
 
           {/* Submit */}
           <button
             onClick={handleSubmit}
-            disabled={loading || !form.product_id}
-            className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 disabled:opacity-50 transition-all shadow-xl shadow-slate-100 flex items-center justify-center gap-3 text-base"
+            disabled={
+              loading || 
+              !form.product_id || 
+              !form.quantity || 
+              Number(form.quantity) <= 0 || 
+              (selectedProduct && Number(form.quantity) > selectedProduct.stock)
+            }
+            className={`w-full py-4 text-white rounded-xl font-bold transition-all shadow-xl flex items-center justify-center gap-3 text-base ${
+              selectedProduct && Number(form.quantity) > selectedProduct.stock
+                ? "bg-slate-300 cursor-not-allowed shadow-none"
+                : "bg-slate-900 hover:bg-slate-800 shadow-slate-100"
+            }`}
           >
             {loading ? <RefreshCw size={20} className="animate-spin" /> : <ShoppingCart size={20} />}
             {loading ? "Đang xử lý..." : "Xác nhận đặt hàng"}

@@ -73,16 +73,23 @@ def create_order(order: OrderRequest):
         db = connect_with_retry(get_mysql, "MySQL")
         cur = db.cursor()
         
-        # Kiểm tra sự tồn tại của sản phẩm và lấy giá
-        cur.execute("SELECT price FROM products WHERE id = %s", (order.product_id,))
+        # Kiểm tra sự tồn tại của sản phẩm, giá và tồn kho
+        cur.execute("SELECT price, stock FROM products WHERE id = %s", (order.product_id,))
         row = cur.fetchone()
         if not row:
             cur.close()
             raise HTTPException(status_code=404, detail="Sản phẩm không tồn tại")
         
-        price       = row[0]
+        price, stock = row
+        
+        # KIỂM TRA TỒN KHO: Nếu số lượng đặt mua lớn hơn tồn kho thì từ chối
+        if order.quantity > stock:
+            cur.close()
+            raise HTTPException(status_code=400, detail=f"Không đủ hàng trong kho (Chỉ còn {stock} sản phẩm)")
+
         total_price = float(price * order.quantity)
         
+        # Lưu đơn hàng vào MySQL
         cur.execute(
             "INSERT INTO orders (user_id, product_id, quantity, total_price, status) VALUES (%s,%s,%s,%s,'PENDING')",
             (order.user_id, order.product_id, order.quantity, total_price)
@@ -93,7 +100,8 @@ def create_order(order: OrderRequest):
     except Exception as e:
         if isinstance(e, HTTPException): raise e
         logging.error(f"Lỗi MySQL: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Xử lý lỗi Out of range cho total_price hoặc các lỗi DB khác
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống khi tạo đơn hàng: {str(e)}")
     finally:
         if db: db.close()
 
