@@ -57,3 +57,9 @@ logs/
 temp/
 node_modules/
 **/node_modules/
+
+# Legacy adapter runtime folders (keep the folders, ignore their contents)
+legacy-adapter/input/*
+legacy-adapter/processed/*
+!legacy-adapter/input/.gitkeep
+!legacy-adapter/processed/.gitkeep
