@@ -132,6 +132,22 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  auto-healer:
+    build:
+      context: ./order-worker
+      dockerfile: Dockerfile.healer
+    container_name: noah-auto-healer
+    profiles: ["healer"]
+    env_file: .env
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+    depends_on:
+      mysql:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   dashboard:
     build: ./dashboard
     container_name: noah-dashboard
