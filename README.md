@@ -1,99 +1,128 @@
-# 🏗️ NOAH Unified Commerce System
+# NOAH — Unified Commerce System
 
-[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-[![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
-[![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white)](https://www.rabbitmq.com/)
-[![Kong](https://img.shields.io/badge/Kong-003459?style=for-the-badge&logo=kong&logoColor=white)](https://konghq.com/)
+An event-driven microservices system that moves retail data from a legacy system (CSV files) into a modern architecture. Orders are accepted through an API gateway, queued in **RabbitMQ**, processed asynchronously, and kept in sync across two databases: **MySQL** for sales and **PostgreSQL** for finance.
 
-**NOAH** là một hệ thống microservices hiện đại, được thiết kế để giải quyết bài toán tích hợp dữ liệu bán lẻ từ các hệ thống cũ (Legacy) sang kiến trúc hiện đại. Hệ thống sử dụng mô hình hướng sự kiện (Event-Driven Architecture) với RabbitMQ và quản lý API tập trung qua Kong Gateway.
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED) ![Python](https://img.shields.io/badge/Python-3.11-3776AB) ![FastAPI](https://img.shields.io/badge/FastAPI-009688) ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600) ![Kong](https://img.shields.io/badge/Kong-3.4-003459) ![React](https://img.shields.io/badge/React-18-61DAFB)
 
----
+## Architecture
 
-## 🚀 Luồng Hoạt Động (System Architecture)
-
-1.  **Ingestion:** Dữ liệu từ file CSV cũ hoặc đơn hàng mới được đẩy vào hệ thống qua `legacy-adapter` hoặc `order-api`.
-2.  **Messaging:** RabbitMQ tiếp nhận đơn hàng, đảm bảo tính bền vững (Persistence) và xử lý bất đồng bộ.
-3.  **Processing:** `order-worker` tiêu thụ message, thực hiện logic nghiệp vụ và đồng bộ hóa dữ liệu song song vào **MySQL** (Bán hàng) và **PostgreSQL** (Tài chính).
-4.  **Security:** Toàn bộ API được bảo vệ bởi **Kong API Gateway** với cơ chế Key Authentication và Rate Limiting.
-5.  **Monitoring:** Dashboard React cung cấp cái nhìn tổng quan về doanh thu, tồn kho và trạng thái hệ thống theo thời gian thực.
-
----
-
-## 📂 Cấu Trúc Dự Án
-
-```text
-noah-system/
-├── dashboard/          # Giao diện quản trị (React + Vite)
-├── order-api/          # API tiếp nhận đơn hàng (Flask)
-├── order-worker/       # Worker xử lý hàng đợi RabbitMQ (Python)
-├── report-service/     # Dịch vụ tổng hợp báo cáo & đối soát (Python)
-├── legacy-adapter/     # Chuyển đổi dữ liệu từ hệ thống cũ (CSV/Legacy DB)
-├── kong/               # Cấu hình API Gateway (Declarative Config)
-├── db/                 # Scripts khởi tạo cơ sở dữ liệu (SQL)
-└── docker-compose.yml  # Orchestration cho toàn bộ hệ thống
+```mermaid
+flowchart LR
+    CSV[Legacy CSV files] --> LA[Legacy Adapter]
+    LA --> MY[(MySQL<br/>sales)]
+    UI[React Dashboard] -->|apikey| KONG[Kong API Gateway]
+    KONG -->|/orders| OA[Order API]
+    KONG -->|/report| RS[Report Service]
+    OA -->|PENDING order| MY
+    OA -->|publish| MQ[[RabbitMQ<br/>order_queue]]
+    MQ --> OW[Order Worker]
+    OW --> PG[(PostgreSQL<br/>finance)]
+    OW --> MY
+    OW --> MAIL[Email notification]
+    RS --> MY
+    RS --> PG
+    AH[Auto Healer] -.reconcile.-> MY
+    AH -.reconcile.-> PG
 ```
 
----
+### Order flow
 
-## 🛠️ Hướng Dẫn Cài Đặt (Quick Start)
+1. The client sends an order through **Kong** (API-key authentication, 100 requests/minute rate limit).
+2. **Order API** checks the product and stock, saves the order as `PENDING` in MySQL and publishes it to RabbitMQ. It returns `202 Accepted` immediately.
+3. **Order Worker** consumes one message at a time (`prefetch_count=1`), writes the transaction to PostgreSQL, updates MySQL and sends an HTML email. Messages are acknowledged only after success; failures are re-queued. Database connections are retried on startup.
+4. **Report Service** aggregates data from both databases for the dashboard.
+5. **Auto Healer** (optional) periodically compares both databases, copies missing records to the other side and logs every repair.
 
-Để đảm bảo hệ thống chạy ổn định và không gặp lỗi, vui lòng thực hiện theo các bước sau:
+## Services
 
-### 1. Yêu cầu hệ thống
--   **Docker** & **Docker Compose** đã được cài đặt.
--   Cổng `3000`, `8000`, `8001`, `15672`, `3307`, `5432` đang trống.
+| Service          | Tech                     | Responsibility |
+|------------------|--------------------------|----------------|
+| `order-api`      | FastAPI, Pydantic        | Validate and accept orders, publish to queue |
+| `order-worker`   | Python, pika             | Consume orders, sync MySQL ↔ PostgreSQL, send email |
+| `report-service` | FastAPI, pandas          | Revenue, stats and product reports |
+| `legacy-adapter` | Python                   | Import inventory CSV files into MySQL, skip invalid rows |
+| `auto-healer`    | Python                   | Detect and repair inconsistencies between databases |
+| `dashboard`      | React, Vite, Tailwind CSS | Overview, orders, inventory, place orders |
+| `kong`           | Kong (declarative config) | Routing, key auth, rate limiting, CORS |
 
-### 2. Thiết lập môi trường
-Sao chép file cấu hình mẫu và điều chỉnh nếu cần:
+## Getting Started
+
+**Requirements:** Docker and Docker Compose. Ports `3000`, `8000`, `8001`, `15672`, `3307` and `5432` must be free.
+
 ```bash
 cp .env.example .env
+docker compose up --build -d
+docker compose logs -f        # databases need ~30–60 s to initialise
 ```
-*(Trên Windows PowerShell: `cp .env.example .env` hoặc `copy .env.example .env`)*
 
-### 3. Khởi chạy hệ thống
-Sử dụng Docker Compose để build và chạy tất cả các services:
+Run the optional auto healer as well:
+
 ```bash
-docker-compose up --build -d
+docker compose --profile healer up -d
 ```
 
-### 4. Kiểm tra trạng thái
-Đợi khoảng 30-60 giây để các database khởi tạo xong. Bạn có thể kiểm tra log bằng lệnh:
+### Endpoints
+
+| Service       | URL                                   |
+|---------------|---------------------------------------|
+| Dashboard     | http://localhost:3000                 |
+| API Gateway   | http://localhost:8000                 |
+| Kong Admin    | http://localhost:8001                 |
+| RabbitMQ UI   | http://localhost:15672 (guest/guest)  |
+| MySQL         | `localhost:3307`                      |
+| PostgreSQL    | `localhost:5432`                      |
+
+### Try the API
+
 ```bash
-docker-compose logs -f
+# Place an order through the gateway
+curl -X POST http://localhost:8000/orders/api/orders \
+  -H "apikey: noah-secret-key" -H "Content-Type: application/json" \
+  -d '{"user_id": 1, "product_id": 101, "quantity": 2}'
+
+# Get statistics
+curl http://localhost:8000/report/api/stats -H "apikey: noah-secret-key"
 ```
 
----
+### Import legacy inventory
 
-## 🔗 Danh Sách Truy Cập (Endpoints)
+Copy a CSV file (`product_id,quantity`) into `legacy-adapter/input/`. The adapter imports it and moves it to `legacy-adapter/processed/`. A sample file is in [`legacy-adapter/sample-data/`](legacy-adapter/sample-data/inventory.csv).
 
-| Service | URL | Mô tả |
-| :--- | :--- | :--- |
-| **Dashboard** | [http://localhost:3000](http://localhost:3000) | Giao diện chính |
-| **API Gateway** | [http://localhost:8000](http://localhost:8000) | Điểm truy cập API tập trung |
-| **Kong Admin** | [http://localhost:8001](http://localhost:8001) | Quản lý Gateway |
-| **RabbitMQ UI** | [http://localhost:15672](http://localhost:15672) | Quản lý hàng đợi (guest/guest) |
-| **MySQL** | `localhost:3307` | Database bán hàng |
-| **PostgreSQL** | `localhost:5432` | Database tài chính |
+### Load test
 
----
+[`scripts/ingest_orders.py`](scripts/ingest_orders.py) pushes existing orders from MySQL into the queue in bulk:
 
-## 🛡️ Tính Năng Nổi Bật
+```bash
+pip install -r scripts/requirements.txt
+RABBITMQ_HOST=localhost python scripts/ingest_orders.py
+```
 
--   ✅ **Microservices Architecture:** Các thành phần hoạt động độc lập, dễ dàng mở rộng.
--   ✅ **Real-time Inventory:** Cập nhật kho hàng tức thời qua WebSockets/Polling.
--   ✅ **Data Consistency:** Đảm bảo dữ liệu nhất quán giữa hai loại DB khác nhau.
--   ✅ **Security First:** Chống spam API bằng Rate Limiting và bảo mật bằng API Key.
--   ✅ **Legacy Support:** Tự động hóa việc nhập liệu từ các định dạng cũ.
+## Project Structure
 
----
+```
+noah_v2/
+├── order-api/          # FastAPI order intake
+├── order-worker/       # RabbitMQ consumer + auto healer
+├── report-service/     # Reporting API
+├── legacy-adapter/     # CSV import (input/, processed/, sample-data/)
+├── dashboard/          # React dashboard
+├── kong/               # Gateway declarative config
+├── db/                 # MySQL and PostgreSQL init scripts
+├── scripts/            # Utility scripts
+├── docs/               # Technical specification (Vietnamese)
+└── docker-compose.yml
+```
 
-## ❓ Xử Lý Sự Cố (Troubleshooting)
+## Troubleshooting
 
--   **Lỗi DB Connection:** Nếu các service báo lỗi không kết nối được DB, hãy thử restart lại system: `docker-compose restart`. Thường do DB khởi động chậm hơn code.
--   **Lỗi Cổng bị chiếm:** Kiểm tra xem có app nào đang chạy ở cổng 3000 hoặc 8000 không và tắt chúng đi.
--   **Dữ liệu không hiển thị:** Đảm bảo bạn đã chạy script `ingest_orders.py` (nếu cần) hoặc kiểm tra thư mục `legacy-adapter/input` đã có file CSV chưa.
+- **Services cannot connect to a database:** the databases start slower than the services. Wait a minute or run `docker compose restart`.
+- **Port already in use:** stop whatever is using ports 3000 or 8000.
+- **No data on the dashboard:** place an order or drop a CSV file into `legacy-adapter/input/`.
 
----
-**Team 1 - CMUCS 445**  
-*Chúc bạn có trải nghiệm tốt với hệ thống NOAH!*
+## Notes
+
+The credentials in `.env.example` and `kong/kong.yml` are local development defaults. Change them before deploying anywhere.
+
+## Authors
+
+Course project for **CMU-CS 445**, Team 1. Repository maintained by **Huynh Thanh Sang** — [github.com/Gnas260605](https://github.com/Gnas260605).
